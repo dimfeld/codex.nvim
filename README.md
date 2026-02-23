@@ -41,6 +41,6 @@ Tip: In visual mode, select lines, hit `:`, then run `CodexHere`.
 
 ```lua
 vim.keymap.set("n", "<leader>cc", "<cmd>CodexHere<cr>", { desc = "Codex: current file" })
-vim.keymap.set("v", "<leader>cc", "<cmd>CodexHere<cr>", { desc = "Codex: selection range" })
+vim.keymap.set("v", "<leader>cc", ":'<,'>CodexHere<cr>", { desc = "Codex: selection range" })
 vim.keymap.set("n", "<leader>cC", "<cmd>Codex<cr>", { desc = "Codex: open" })
 ```
