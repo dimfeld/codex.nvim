@@ -8,6 +8,7 @@ M._fallback_term = nil
 ---@field cwd nil|string|fun(bufnr: integer, filepath: string):string  -- nil uses current Neovim cwd
 ---@field use_snacks boolean
 ---@field use_at_file_mention boolean
+---@field focus_existing_on_here boolean
 ---@field prompt { file: string, range: string }
 ---@field commands { codex: string, here: string }
 
@@ -23,8 +24,10 @@ local defaults = {
   cwd = "git_root",
 
   use_snacks = true,
-  -- Codex supports @file references; keep this true if you want the special file mention syntax.
-  use_at_file_mention = true,
+  -- Codex supports @file references but we usually don't want them because the
+  -- @ disappears after autocomplete resolves.
+  use_at_file_mention = false,
+  focus_existing_on_here = true,
 
   -- Window options for Snacks.terminal (snacks.win.Config)
   win = {
@@ -41,8 +44,8 @@ local defaults = {
 
   prompt = {
     -- {file} will be replaced with either "@path" or "path" depending on use_at_file_mention.
-    file = "{file}",
-    range = "{file}",
+    file = "{file} ",
+    range = "{file}:{start}-{end} ",
   },
 
   commands = {
@@ -139,13 +142,15 @@ local function resolve_cwd(bufnr, filepath)
 end
 
 local function interpolate(template, vars)
-  return (template:gsub("{(.-)}", function(k)
-    local v = vars[k]
-    if v == nil then
-      return "{" .. k .. "}"
-    end
-    return tostring(v)
-  end))
+  return (
+    template:gsub("{(.-)}", function(k)
+      local v = vars[k]
+      if v == nil then
+        return "{" .. k .. "}"
+      end
+      return tostring(v)
+    end)
+  )
 end
 
 local function current_file(bufnr)
@@ -231,6 +236,13 @@ local function send_input_when_ready(buf, input, initial_delay_ms)
   vim.defer_fn(try_send, initial_delay_ms)
 end
 
+local function focus_terminal_buffer(buf)
+  local win = vim.fn.bufwinnr(buf)
+  if win and win > 0 then
+    pcall(vim.api.nvim_set_current_win, win)
+  end
+end
+
 local function close_term_window(win)
   if not win or not vim.api.nvim_win_is_valid(win) then
     return
@@ -264,7 +276,10 @@ end
 ---@return integer|nil buf, boolean created
 local function open_or_reuse_terminal(cwd)
   if not has_cmd(M.config.codex.cmd) then
-    notify("`codex` was not found on your PATH. Install it (npm i -g @openai/codex or brew install codex).", vim.log.levels.ERROR)
+    notify(
+      "`codex` was not found on your PATH. Install it (npm i -g @openai/codex or brew install codex).",
+      vim.log.levels.ERROR
+    )
     return nil, false
   end
 
@@ -361,6 +376,9 @@ function M.open_here(opts)
 
   local buf, created = open_or_reuse_terminal(cwd)
   if buf then
+    if (not created) and M.config.focus_existing_on_here then
+      focus_terminal_buffer(buf)
+    end
     local initial_delay = created and 1000 or 50
     send_input_when_ready(buf, prompt, initial_delay)
   end

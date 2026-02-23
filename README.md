@@ -21,6 +21,7 @@ A tiny Neovim plugin that opens the **OpenAI Codex CLI** in a **right-side termi
       -- optional overrides
       -- win = { width = 0.5 },
       -- codex = { args = { "--no-alt-screen", "--model", "gpt-5.3-codex" } },
+      -- focus_existing_on_here = true, -- focus existing Codex terminal on :CodexHere
     })
   end,
 }
