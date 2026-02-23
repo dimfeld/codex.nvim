@@ -391,11 +391,11 @@ function M.setup(opts)
 
   -- user commands
   vim.api.nvim_create_user_command(M.config.commands.codex, function()
-    require("codex_split").open()
+    require("codex").open()
   end, { desc = "Open Codex in a right split (terminal)" })
 
   vim.api.nvim_create_user_command(M.config.commands.here, function(cmd_opts)
-    require("codex_split").open_here(cmd_opts)
+    require("codex").open_here(cmd_opts)
   end, {
     desc = "Open/reuse Codex and insert current file reference",
     range = true,

@@ -1,10 +1,12 @@
-# codex-split.nvim
+# codex.nvim
 
 A tiny Neovim plugin that opens the **OpenAI Codex CLI** in a **right-side terminal split** (via `snacks.nvim`), plus a command to open/reuse Codex and insert the current buffer file reference.
 
+You should probably just create your own instead of using this, since Codex can spit out a plugin like this pretty quick.
+
 ## Requirements
 
-- Neovim 0.9.4+
+- Neovim 0.11.6+
 - [`folke/snacks.nvim`](https://github.com/folke/snacks.nvim)
 - The Codex CLI installed (`codex` on your PATH)
 
@@ -12,18 +14,17 @@ A tiny Neovim plugin that opens the **OpenAI Codex CLI** in a **right-side termi
 
 ```lua
 {
-  "yourname/codex-split.nvim",
+  "dimfeld/codex.nvim",
   dependencies = {
     "folke/snacks.nvim",
   },
-  config = function()
-    require("codex_split").setup({
-      -- optional overrides
-      -- win = { width = 0.5 },
-      -- codex = { args = { "--no-alt-screen", "--model", "gpt-5.3-codex" } },
-      -- focus_existing_on_here = true, -- focus existing Codex terminal on :CodexHere
-    })
-  end,
+  opts = {
+    codex = {
+      args = { "--model", "gpt-5.3-codex-spark" },
+    },
+    -- win = { width = 0.5 },
+    -- focus_existing_on_here = true, -- focus existing Codex terminal on :CodexHere
+  },
 }
 ```
 
