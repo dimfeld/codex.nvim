@@ -1,4 +1,5 @@
 local M = {}
+M._fallback_term = nil
 
 ---@class CodexSplitConfig
 ---@field codex { cmd: string|string[], args?: string[] }
@@ -177,6 +178,58 @@ local function build_codex_cmd(prompt)
   return cmd
 end
 
+local function cmd_equal(a, b)
+  if type(a) ~= "table" or type(b) ~= "table" then
+    return false
+  end
+  if #a ~= #b then
+    return false
+  end
+  for i = 1, #a do
+    if a[i] ~= b[i] then
+      return false
+    end
+  end
+  return true
+end
+
+local function get_term_job_id(buf)
+  if not buf or not vim.api.nvim_buf_is_valid(buf) then
+    return nil
+  end
+  local ok, job_id = pcall(vim.api.nvim_buf_get_var, buf, "terminal_job_id")
+  if ok and type(job_id) == "number" and job_id > 0 then
+    return job_id
+  end
+  return nil
+end
+
+local function send_input_when_ready(buf, input)
+  local attempts = 0
+  local max_attempts = 40
+
+  local function try_send()
+    attempts = attempts + 1
+    if not vim.api.nvim_buf_is_valid(buf) then
+      return
+    end
+
+    local job_id = get_term_job_id(buf)
+    if job_id and vim.fn.jobwait({ job_id }, 0)[1] == -1 then
+      vim.fn.chansend(job_id, input)
+      return
+    end
+
+    if attempts < max_attempts then
+      vim.defer_fn(try_send, 50)
+    else
+      notify("Codex terminal was not ready for input.", vim.log.levels.WARN)
+    end
+  end
+
+  vim.defer_fn(try_send, 50)
+end
+
 local function close_term_window(win)
   if not win or not vim.api.nvim_win_is_valid(win) then
     return
@@ -189,20 +242,63 @@ local function close_term_window(win)
   end)
 end
 
-local function open_terminal(cmd, cwd)
+local function find_existing_snacks_terminal(codex_cmd)
+  local ok, Snacks = pcall(require, "snacks")
+  if not (ok and Snacks and Snacks.terminal and Snacks.terminal.list) then
+    return nil
+  end
+
+  for _, term in ipairs(Snacks.terminal.list()) do
+    if term and term.buf and term.buf > 0 and vim.api.nvim_buf_is_valid(term.buf) then
+      local ok_var, meta = pcall(vim.api.nvim_buf_get_var, term.buf, "snacks_terminal")
+      if ok_var and type(meta) == "table" and cmd_equal(meta.cmd, codex_cmd) then
+        return term
+      end
+    end
+  end
+
+  return nil
+end
+
+local function open_or_reuse_terminal(cwd)
   if not has_cmd(M.config.codex.cmd) then
     notify("`codex` was not found on your PATH. Install it (npm i -g @openai/codex or brew install codex).", vim.log.levels.ERROR)
-    return
+    return nil
   end
+
+  local codex_cmd = build_codex_cmd(nil)
 
   if M.config.use_snacks then
     local ok, Snacks = pcall(require, "snacks")
     if ok and Snacks and Snacks.terminal then
+      local existing = find_existing_snacks_terminal(codex_cmd)
+      if existing then
+        existing:show()
+        return existing.buf
+      end
+
       local opts = vim.tbl_deep_extend("force", {}, M.config.term or {})
       opts.win = vim.tbl_deep_extend("force", {}, M.config.win or {}, opts.win or {})
       opts.cwd = cwd or opts.cwd
-      Snacks.terminal.open(cmd, opts)
-      return
+      local term = Snacks.terminal.open(codex_cmd, opts)
+      return term and term.buf or nil
+    end
+  end
+
+  local fallback = M._fallback_term
+  if fallback and fallback.buf and vim.api.nvim_buf_is_valid(fallback.buf) then
+    local job_id = get_term_job_id(fallback.buf)
+    if job_id and vim.fn.jobwait({ job_id }, 0)[1] == -1 then
+      if fallback.win and vim.api.nvim_win_is_valid(fallback.win) then
+        vim.api.nvim_set_current_win(fallback.win)
+      else
+        vim.cmd("vsplit")
+        vim.cmd("wincmd L")
+        fallback.win = vim.api.nvim_get_current_win()
+        vim.api.nvim_win_set_buf(fallback.win, fallback.buf)
+      end
+      vim.cmd("startinsert")
+      return fallback.buf
     end
   end
 
@@ -214,26 +310,28 @@ local function open_terminal(cmd, cwd)
   local buf = vim.api.nvim_create_buf(false, true)
   vim.api.nvim_win_set_buf(win, buf)
 
-  vim.fn.termopen(cmd, {
+  vim.fn.termopen(codex_cmd, {
     cwd = cwd,
     on_exit = function()
       close_term_window(win)
     end,
   })
+  M._fallback_term = { buf = buf, win = win }
   vim.cmd("startinsert")
+  return buf
 end
 
 -- ---------------------------
 -- Public API
 -- ---------------------------
 
----Open Codex in a right split (no preloaded prompt).
+---Open Codex in a right split (reuses an existing Codex terminal when possible).
 function M.open()
-  open_terminal(build_codex_cmd(nil), resolve_cwd(0, vim.fn.getcwd(0)))
+  open_or_reuse_terminal(resolve_cwd(0, vim.fn.getcwd(0)))
 end
 
----Open Codex preloaded with a mention of the current buffer's file.
----If called with a visual range, also mention the selected line numbers.
+---Open/reuse Codex and type a mention of the current buffer's file into the terminal.
+---If called with a visual range, include the selected line numbers.
 ---@param opts? {range?: integer, line1?: integer, line2?: integer}
 function M.open_here(opts)
   opts = opts or {}
@@ -260,7 +358,10 @@ function M.open_here(opts)
     prompt = interpolate(M.config.prompt.file, { file = file_ref })
   end
 
-  open_terminal(build_codex_cmd(prompt), cwd)
+  local buf = open_or_reuse_terminal(cwd)
+  if buf then
+    send_input_when_ready(buf, prompt)
+  end
 end
 
 ---Setup the plugin and define user commands.
@@ -276,7 +377,7 @@ function M.setup(opts)
   vim.api.nvim_create_user_command(M.config.commands.here, function(cmd_opts)
     require("codex_split").open_here(cmd_opts)
   end, {
-    desc = "Open Codex preloaded with current file (and selection line range in visual mode)",
+    desc = "Open/reuse Codex and insert current file prompt (visual mode includes line range)",
     range = true,
   })
 end

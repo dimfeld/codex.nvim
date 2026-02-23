@@ -1,6 +1,6 @@
 # codex-split.nvim
 
-A tiny Neovim plugin that opens the **OpenAI Codex CLI** in a **right-side terminal split** (via `snacks.nvim`), plus a command to launch Codex preloaded with the current buffer’s file (and visual selection line range).
+A tiny Neovim plugin that opens the **OpenAI Codex CLI** in a **right-side terminal split** (via `snacks.nvim`), plus a command to open/reuse Codex and insert text mentioning the current buffer’s file (and visual selection line range).
 
 ## Requirements
 
@@ -29,11 +29,12 @@ A tiny Neovim plugin that opens the **OpenAI Codex CLI** in a **right-side termi
 ## Commands
 
 - `:Codex`
-  - Opens `codex` (no preloaded prompt) in a right split terminal.
+  - Opens `codex` in a right split terminal.
+  - Reuses an existing Codex terminal if one is already running.
 
 - `:CodexHere`
-  - In normal mode: opens `codex` with a prompt mentioning the current file.
-  - In visual mode: opens `codex` with a prompt mentioning the current file **and** the selected line range.
+  - In normal mode: opens/reuses `codex`, then inserts a prompt mentioning the current file as terminal input.
+  - In visual mode: opens/reuses `codex`, then inserts a prompt mentioning the current file **and** the selected line range.
 
 Tip: In visual mode, select lines, hit `:`, then run `CodexHere`.
 
