@@ -41,8 +41,8 @@ local defaults = {
 
   prompt = {
     -- {file} will be replaced with either "@path" or "path" depending on use_at_file_mention.
-    file = "I'm working on {file}.",
-    range = "I'm working on {file}. Please focus on lines {start}-{end}.",
+    file = "{file}",
+    range = "{file}",
   },
 
   commands = {
@@ -332,8 +332,7 @@ function M.open()
   open_or_reuse_terminal(resolve_cwd(0, vim.fn.getcwd(0)))
 end
 
----Open/reuse Codex and type a mention of the current buffer's file into the terminal.
----If called with a visual range, include the selected line numbers.
+---Open/reuse Codex and type the current buffer's file reference into the terminal.
 ---@param opts? {range?: integer, line1?: integer, line2?: integer}
 function M.open_here(opts)
   opts = opts or {}
@@ -380,7 +379,7 @@ function M.setup(opts)
   vim.api.nvim_create_user_command(M.config.commands.here, function(cmd_opts)
     require("codex_split").open_here(cmd_opts)
   end, {
-    desc = "Open/reuse Codex and insert current file prompt (visual mode includes line range)",
+    desc = "Open/reuse Codex and insert current file reference",
     range = true,
   })
 end
