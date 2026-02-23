@@ -204,7 +204,8 @@ local function get_term_job_id(buf)
   return nil
 end
 
-local function send_input_when_ready(buf, input)
+local function send_input_when_ready(buf, input, initial_delay_ms)
+  initial_delay_ms = initial_delay_ms or 50
   local attempts = 0
   local max_attempts = 40
 
@@ -227,7 +228,7 @@ local function send_input_when_ready(buf, input)
     end
   end
 
-  vim.defer_fn(try_send, 50)
+  vim.defer_fn(try_send, initial_delay_ms)
 end
 
 local function close_term_window(win)
@@ -260,10 +261,11 @@ local function find_existing_snacks_terminal(codex_cmd)
   return nil
 end
 
+---@return integer|nil buf, boolean created
 local function open_or_reuse_terminal(cwd)
   if not has_cmd(M.config.codex.cmd) then
     notify("`codex` was not found on your PATH. Install it (npm i -g @openai/codex or brew install codex).", vim.log.levels.ERROR)
-    return nil
+    return nil, false
   end
 
   local codex_cmd = build_codex_cmd(nil)
@@ -274,14 +276,14 @@ local function open_or_reuse_terminal(cwd)
       local existing = find_existing_snacks_terminal(codex_cmd)
       if existing then
         existing:show()
-        return existing.buf
+        return existing.buf, false
       end
 
       local opts = vim.tbl_deep_extend("force", {}, M.config.term or {})
       opts.win = vim.tbl_deep_extend("force", {}, M.config.win or {}, opts.win or {})
       opts.cwd = cwd or opts.cwd
       local term = Snacks.terminal.open(codex_cmd, opts)
-      return term and term.buf or nil
+      return term and term.buf or nil, true
     end
   end
 
@@ -298,7 +300,7 @@ local function open_or_reuse_terminal(cwd)
         vim.api.nvim_win_set_buf(fallback.win, fallback.buf)
       end
       vim.cmd("startinsert")
-      return fallback.buf
+      return fallback.buf, false
     end
   end
 
@@ -318,7 +320,7 @@ local function open_or_reuse_terminal(cwd)
   })
   M._fallback_term = { buf = buf, win = win }
   vim.cmd("startinsert")
-  return buf
+  return buf, true
 end
 
 -- ---------------------------
@@ -358,9 +360,10 @@ function M.open_here(opts)
     prompt = interpolate(M.config.prompt.file, { file = file_ref })
   end
 
-  local buf = open_or_reuse_terminal(cwd)
+  local buf, created = open_or_reuse_terminal(cwd)
   if buf then
-    send_input_when_ready(buf, prompt)
+    local initial_delay = created and 1000 or 50
+    send_input_when_ready(buf, prompt, initial_delay)
   end
 end
 
