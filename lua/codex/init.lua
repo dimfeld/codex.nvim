@@ -255,6 +255,32 @@ local function close_term_window(win)
   end)
 end
 
+local function terminal_split_width(requested_width)
+  local max_width = 90
+  local columns = vim.o.columns
+  if type(requested_width) ~= "number" or columns <= 0 then
+    return math.min(max_width, math.max(1, columns))
+  end
+
+  local width = requested_width
+  if width > 0 and width <= 1 then
+    width = width * columns
+  end
+  width = math.floor(width + 0.5)
+
+  if width < 1 then
+    width = 1
+  end
+  if width > columns then
+    width = columns
+  end
+  if width > max_width then
+    width = max_width
+  end
+
+  return width
+end
+
 local function find_existing_snacks_terminal(codex_cmd)
   local ok, Snacks = pcall(require, "snacks")
   if not (ok and Snacks and Snacks.terminal and Snacks.terminal.list) then
@@ -296,6 +322,9 @@ local function open_or_reuse_terminal(cwd)
 
       local opts = vim.tbl_deep_extend("force", {}, M.config.term or {})
       opts.win = vim.tbl_deep_extend("force", {}, M.config.win or {}, opts.win or {})
+      if opts.win and opts.win.width then
+        opts.win.width = terminal_split_width(opts.win.width)
+      end
       opts.cwd = cwd or opts.cwd
       local term = Snacks.terminal.open(codex_cmd, opts)
       return term and term.buf or nil, true
@@ -312,6 +341,7 @@ local function open_or_reuse_terminal(cwd)
         vim.cmd("vsplit")
         vim.cmd("wincmd L")
         fallback.win = vim.api.nvim_get_current_win()
+        vim.api.nvim_win_set_width(fallback.win, terminal_split_width(M.config.win.width))
         vim.api.nvim_win_set_buf(fallback.win, fallback.buf)
       end
       vim.cmd("startinsert")
@@ -324,6 +354,7 @@ local function open_or_reuse_terminal(cwd)
   vim.cmd("wincmd L")
 
   local win = vim.api.nvim_get_current_win()
+  vim.api.nvim_win_set_width(win, terminal_split_width(M.config.win.width))
   local buf = vim.api.nvim_create_buf(false, true)
   vim.api.nvim_win_set_buf(win, buf)
 
@@ -379,7 +410,7 @@ function M.open_here(opts)
     if (not created) and M.config.focus_existing_on_here then
       focus_terminal_buffer(buf)
     end
-    local initial_delay = created and 1000 or 50
+    local initial_delay = created and 500 or 50
     send_input_when_ready(buf, prompt, initial_delay)
   end
 end
