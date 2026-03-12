@@ -237,8 +237,8 @@ local function send_input_when_ready(buf, input, initial_delay_ms)
 end
 
 local function focus_terminal_buffer(buf)
-  local win = vim.fn.bufwinnr(buf)
-  if win and win > 0 then
+  local win = vim.fn.bufwinid(buf)
+  if win and win ~= -1 then
     pcall(vim.api.nvim_set_current_win, win)
   end
 end
