@@ -409,6 +409,7 @@ function M.open_here(opts)
   if buf then
     if (not created) and M.config.focus_existing_on_here then
       focus_terminal_buffer(buf)
+      vim.cmd("startinsert")
     end
     local initial_delay = created and 500 or 50
     send_input_when_ready(buf, prompt, initial_delay)
