@@ -3,6 +3,7 @@ M._fallback_term = nil
 
 ---@class CodexSplitConfig
 ---@field codex { cmd: string|string[], args?: string[] }
+---@field presets table<string, { args?: string[] }>
 ---@field win table  -- snacks.win.Config subset
 ---@field term table -- snacks.terminal.Opts subset
 ---@field cwd nil|string|fun(bufnr: integer, filepath: string):string  -- nil uses current Neovim cwd
@@ -19,6 +20,7 @@ local defaults = {
     -- Remove it if you prefer Codex's default behavior.
     args = { "--no-alt-screen" },
   },
+  presets = {},
   -- If set to "git_root", Codex is launched from the repo root of the current buffer (best default).
   -- Set to nil to use Neovim's current working directory.
   cwd = "git_root",
@@ -75,13 +77,6 @@ end
 
 local function trim_trailing_slash(p)
   return (p:gsub("/+$", ""))
-end
-
-local function path_join(a, b)
-  if a:sub(-1) == "/" then
-    return a .. b
-  end
-  return a .. "/" .. b
 end
 
 local function relpath(root, path)
@@ -162,7 +157,31 @@ local function current_file(bufnr)
   return name
 end
 
-local function build_codex_cmd(prompt)
+local function resolve_codex_args(preset_name)
+  local cfg = M.config.codex
+  if preset_name == nil or preset_name == "" then
+    return cfg.args
+  end
+
+  local preset = M.config.presets and M.config.presets[preset_name]
+  if not preset then
+    notify(("Unknown Codex preset %q."):format(preset_name), vim.log.levels.ERROR)
+    return nil
+  end
+
+  if preset.args == nil then
+    return cfg.args
+  end
+
+  if type(preset.args) ~= "table" then
+    notify(("Codex preset %q has invalid args; expected a list."):format(preset_name), vim.log.levels.ERROR)
+    return nil
+  end
+
+  return preset.args
+end
+
+local function build_codex_cmd(prompt, preset_name)
   local cfg = M.config.codex
   local cmd = {}
 
@@ -172,8 +191,13 @@ local function build_codex_cmd(prompt)
     table.insert(cmd, cfg.cmd)
   end
 
-  if cfg.args and type(cfg.args) == "table" then
-    vim.list_extend(cmd, cfg.args)
+  local args = resolve_codex_args(preset_name)
+  if args == nil then
+    return nil
+  end
+
+  if type(args) == "table" then
+    vim.list_extend(cmd, args)
   end
 
   if prompt and prompt ~= "" then
@@ -300,7 +324,7 @@ local function find_existing_snacks_terminal(codex_cmd)
 end
 
 ---@return integer|nil buf, boolean created
-local function open_or_reuse_terminal(cwd)
+local function open_or_reuse_terminal(cwd, preset_name)
   if not has_cmd(M.config.codex.cmd) then
     notify(
       "`codex` was not found on your PATH. Install it (npm i -g @openai/codex or brew install codex).",
@@ -309,7 +333,10 @@ local function open_or_reuse_terminal(cwd)
     return nil, false
   end
 
-  local codex_cmd = build_codex_cmd(nil)
+  local codex_cmd = build_codex_cmd(nil, preset_name)
+  if not codex_cmd then
+    return nil, false
+  end
 
   if M.config.use_snacks then
     local ok, Snacks = pcall(require, "snacks")
@@ -374,13 +401,15 @@ end
 -- ---------------------------
 
 ---Open Codex in a right split (reuses an existing Codex terminal when possible).
-function M.open()
-  open_or_reuse_terminal(resolve_cwd(0, vim.fn.getcwd(0)))
+---@param preset_name? string
+function M.open(preset_name)
+  open_or_reuse_terminal(resolve_cwd(0, vim.fn.getcwd(0)), preset_name)
 end
 
 ---Open/reuse Codex and type the current buffer's file reference into the terminal.
 ---@param opts? {range?: integer, line1?: integer, line2?: integer}
-function M.open_here(opts)
+---@param preset_name? string
+function M.open_here(opts, preset_name)
   opts = opts or {}
 
   local bufnr = 0
@@ -405,7 +434,7 @@ function M.open_here(opts)
     prompt = interpolate(M.config.prompt.file, { file = file_ref })
   end
 
-  local buf, created = open_or_reuse_terminal(cwd)
+  local buf, created = open_or_reuse_terminal(cwd, preset_name)
   if buf then
     if (not created) and M.config.focus_existing_on_here then
       focus_terminal_buffer(buf)
@@ -422,14 +451,18 @@ function M.setup(opts)
   M.config = vim.tbl_deep_extend("force", vim.deepcopy(defaults), opts or {})
 
   -- user commands
-  vim.api.nvim_create_user_command(M.config.commands.codex, function()
-    require("codex").open()
-  end, { desc = "Open Codex in a right split (terminal)" })
+  vim.api.nvim_create_user_command(M.config.commands.codex, function(cmd_opts)
+    require("codex").open(cmd_opts.fargs[1])
+  end, {
+    desc = "Open Codex in a right split (terminal)",
+    nargs = "?",
+  })
 
   vim.api.nvim_create_user_command(M.config.commands.here, function(cmd_opts)
-    require("codex").open_here(cmd_opts)
+    require("codex").open_here(cmd_opts, cmd_opts.fargs[1])
   end, {
     desc = "Open/reuse Codex and insert current file reference",
+    nargs = "?",
     range = true,
   })
 end

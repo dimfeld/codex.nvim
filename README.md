@@ -22,6 +22,11 @@ You should probably just create your own instead of using this, since Codex can 
     codex = {
       args = { "--model", "gpt-5.3-codex-spark" },
     },
+    presets = {
+      mini = {
+        args = { "--model", "gpt-5.4-mini" },
+      },
+    },
     -- win = { width = 0.5 },
     -- focus_existing_on_here = true, -- focus existing Codex terminal on :CodexHere
   },
@@ -33,9 +38,11 @@ You should probably just create your own instead of using this, since Codex can 
 - `:Codex`
   - Opens `codex` in a right split terminal.
   - Reuses an existing Codex terminal if one is already running.
+  - Pass a preset name like `:Codex mini` to use `opts.presets.mini.args` instead of `codex.args`.
 
 - `:CodexHere`
   - Opens/reuses `codex`, then inserts only the current file reference as terminal input.
+  - Pass a preset name like `:CodexHere mini` to use the same preset args.
 
 Tip: In visual mode, select lines, hit `:`, then run `CodexHere`.
 
